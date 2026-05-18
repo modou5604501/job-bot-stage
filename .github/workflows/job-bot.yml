@@ -43,7 +43,6 @@ jobs:
           DATABASE_URL: sqlite:///jobs.db
           LOG_LEVEL: INFO
           HUNTER_IO_API_KEY: ${{ secrets.HUNTER_IO_API_KEY }}
-          INDEED_SEARCH_QUERIES: geomatique,geomatics,GIS,environment intern,stage environnement,stage topographie,hydrologie,amenagement territoire,remote sensing,stage ecologie,cartographie
           INDEED_LOCATION: Canada
         run: python main.py --run-once
 
