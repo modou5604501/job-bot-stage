@@ -71,17 +71,27 @@ def _is_hr_email(email_data: dict) -> bool:
 class HunterEmailFinder:
     """Trouve les emails RH manquants via Hunter.io API."""
 
+    MONTHLY_CAP = 60  # marge de securite sous la limite gratuite de 75/mois
+
     def __init__(self, api_key: str):
         self.api_key = api_key
         self._cache: Dict[str, Optional[str]] = {}  # domain -> email trouvé
+        self._quota_exceeded = False
+        self._calls_this_session = 0
 
     async def enrich_jobs(self, jobs: List[Dict]) -> List[Dict]:
         """
         Enrichit les offres sans apply_email en cherchant un email RH via Hunter.io.
         Modifie les offres en place et retourne la liste enrichie.
         """
+        if self._quota_exceeded:
+            logger.warning("Hunter.io : quota depasse — enrichissement desactive pour ce cycle")
+            return jobs
+
         enriched = 0
         for job in jobs:
+            if self._quota_exceeded:
+                break
             if job.get("apply_email"):
                 continue  # Deja un email direct, pas besoin
 
@@ -105,13 +115,18 @@ class HunterEmailFinder:
 
     async def _find_hr_email(self, domain: str, company: str) -> Optional[str]:
         """Cherche un email RH pour un domaine donne."""
+        if self._quota_exceeded:
+            return None
         if domain in self._cache:
             return self._cache[domain]
+        if self._calls_this_session >= self.MONTHLY_CAP:
+            logger.warning(f"Hunter.io : cap session atteint ({self.MONTHLY_CAP} req) — pause")
+            self._quota_exceeded = True
+            return None
 
         email = None
         try:
             async with httpx.AsyncClient(timeout=10, verify=False) as client:
-                # 1. Domain Search — liste des emails connus pour ce domaine
                 r = await client.get(
                     f"{HUNTER_API}/domain-search",
                     params={
@@ -121,37 +136,37 @@ class HunterEmailFinder:
                         "limit": 10,
                     },
                 )
+                self._calls_this_session += 1
+
                 if r.status_code == 200:
                     data = r.json().get("data", {})
                     emails = data.get("emails", [])
 
-                    # Priorité 1 : emails RH/recrutement
+                    # Priorite 1 : emails RH/recrutement
                     for e in emails:
                         if _is_hr_email(e) and e.get("confidence", 0) >= 50:
                             email = e.get("value")
                             break
 
-                    # Priorité 2 : n'importe quel email avec haute confiance
+                    # Priorite 2 : n'importe quel email avec haute confiance
                     if not email:
                         for e in emails:
                             if e.get("confidence", 0) >= 70:
                                 email = e.get("value")
                                 break
 
-                    # Priorité 3 : email generique du domaine (pattern)
+                    # Priorite 3 : pattern generique du domaine
                     if not email:
-                        pattern = data.get("pattern")
-                        first_name = "recrutement"
-                        if pattern:
-                            # Utiliser le pattern pour construire un email generique
-                            generic = data.get("organization", {}).get("emails", [])
-                            if generic:
-                                email = generic[0].get("value")
+                        generic = data.get("organization", {}).get("emails", [])
+                        if generic:
+                            email = generic[0].get("value")
 
                 elif r.status_code == 429:
-                    logger.warning("Hunter.io : limite mensuelle atteinte (25 req/mois)")
+                    logger.warning("Hunter.io : quota mensuel atteint — desactive pour ce cycle")
+                    self._quota_exceeded = True
                 elif r.status_code == 401:
-                    logger.warning("Hunter.io : cle API invalide — verifier HUNTER_IO_API_KEY dans .env")
+                    logger.warning("Hunter.io : cle API invalide — verifier HUNTER_IO_API_KEY")
+                    self._quota_exceeded = True
 
         except Exception as e:
             logger.debug(f"Hunter.io '{domain}': {e}")

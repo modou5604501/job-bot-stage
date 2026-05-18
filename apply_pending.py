@@ -12,7 +12,9 @@ from app.database.models import JobDatabase, Job
 from app.notifier.auto_apply import AutoApply
 from app.utils.hunter_email_finder import HunterEmailFinder
 from app.utils.smart_email_guesser import enrich_jobs_smart
+from app.utils.apply_history import load_applied_domains, save_applied_email
 
+MAX_APPLY_PER_CYCLE = 8
 STAGE_KW = {"stage", "intern", "internship", "stagiaire", "coop", "cooperatif"}
 DOMAIN_KW = {
     "geomatique", "geomatics", "gis", "sig", "qgis", "arcgis",
@@ -39,7 +41,8 @@ async def main():
     applier = AutoApply(settings)
     hunter = HunterEmailFinder(settings.hunter_io_api_key) if settings.hunter_io_api_key else None
 
-    # Recuperer les emails deja utilises (deduplication inter-cycles)
+    # Historique persistant + DB locale (deduplication multi-niveaux)
+    sent_domains: set = load_applied_domains()  # survit a l'expiration du cache
     already_applied_emails: set = set()
     with db.SessionLocal() as session:
         applied_rows = session.query(Job).filter_by(applied=True).all()
@@ -108,23 +111,38 @@ async def main():
     skipped = 0
 
     for job in all_relevant:
+        if applied >= MAX_APPLY_PER_CYCLE:
+            logger.info(f"Plafond {MAX_APPLY_PER_CYCLE} candidatures/cycle atteint — arret")
+            break
+
         if not job.get("apply_email"):
             logger.info(f"Pas d'email : {job['title']} @ {job.get('company', '')} — ignore")
             skipped += 1
             continue
 
-        # Deduplication : evite de re-postuler au meme email dans le meme cycle
-        email_key = job["apply_email"].lower().strip()
-        if email_key in already_applied_emails:
-            logger.info(f"Deja postule (meme email) : {job['title']} @ {job.get('company', '')} — ignore")
+        apply_email = job["apply_email"].lower().strip()
+        email_domain = apply_email.split("@")[-1] if "@" in apply_email else ""
+
+        # Deduplication par email exact (DB locale)
+        if apply_email in already_applied_emails:
+            logger.info(f"Deja postule (email exact) : {job['title']} — ignore")
+            skipped += 1
+            continue
+
+        # Deduplication par domaine (historique permanent)
+        if email_domain and email_domain in sent_domains:
+            logger.info(f"Domaine deja contacte ({email_domain}) : {job['title']} — ignore")
             skipped += 1
             continue
 
         success = await applier.apply_to_job(job)
         if success:
             applied += 1
-            already_applied_emails.add(email_key)
-            await db.mark_applied(job["url"], job.get("apply_email", ""))
+            already_applied_emails.add(apply_email)
+            if email_domain:
+                sent_domains.add(email_domain)
+            save_applied_email(apply_email)
+            await db.mark_applied(job["url"], apply_email)
         else:
             skipped += 1
 

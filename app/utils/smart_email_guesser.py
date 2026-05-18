@@ -6,6 +6,7 @@ Trouve ou devine l'email RH d'une entreprise par plusieurs méthodes :
 """
 import re
 import asyncio
+import socket
 from typing import Optional, List
 from urllib.parse import urlparse
 import httpx
@@ -48,6 +49,16 @@ AGGREGATORS = {
     "candidat.francetravail.fr", "hh.ru", "google.com", "jobteaser.com",
     "glassdoor.com", "monster.com", "workopolis.com", "aerocontact.com",
 }
+
+
+def _domain_resolves(domain: str) -> bool:
+    """Verifie qu'un domaine existe dans le DNS (filtre les domaines completement inventes)."""
+    try:
+        socket.setdefaulttimeout(3)
+        socket.getaddrinfo(domain, None)
+        return True
+    except Exception:
+        return False
 
 
 def _company_to_domain(company: str) -> Optional[str]:
@@ -170,15 +181,18 @@ async def find_email_for_job(job: dict, hunter_cache: dict = None) -> Optional[s
             hunter_cache[domain_base] = best
         return best
 
-    # 4. Deviner le pattern le plus probable (careers@domain.ca en priorité)
+    # 4. Deviner le pattern — seulement si le domaine resout dans le DNS
     for tld in [".ca", ".com", ".fr", ".ch"]:
         domain = f"{domain_base}{tld}"
-        guessed = f"careers@{domain}"
-        logger.info(f"Email devine pour {company}: {guessed}")
-        if hunter_cache is not None:
-            hunter_cache[domain_base] = guessed
-        return guessed
+        if _domain_resolves(domain):
+            guessed = f"careers@{domain}"
+            logger.info(f"Email devine pour {company}: {guessed}")
+            if hunter_cache is not None:
+                hunter_cache[domain_base] = guessed
+            return guessed
+        logger.debug(f"Domaine inexistant (DNS) : {domain} — ignore")
 
+    logger.info(f"Aucun domaine DNS valide trouve pour {company} — candidature ignoree")
     return None
 
 

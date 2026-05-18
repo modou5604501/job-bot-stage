@@ -24,8 +24,10 @@ from app.notifier.auto_apply import AutoApply
 from app.utils.triage import triage_jobs
 from app.utils.hunter_email_finder import HunterEmailFinder
 from app.utils.smart_email_guesser import enrich_jobs_smart
+from app.utils.apply_history import load_applied_domains, save_applied_email
 
 INTERVAL_HEURES = 2
+MAX_APPLY_PER_CYCLE = 8  # plafond Gmail : evite le blocage compte
 
 
 async def main():
@@ -146,9 +148,10 @@ async def run_workflow(jobbank, linkedin, multi, ft, hh, google, jobteaser,
         "ecology", "hydrologie", "hydrology", "biodiversite", "conservation",
         "milieu naturel", "impact environnemental", "topographie",
     }
+    # Historique persistant : domaines deja contactes (survit a l'expiration du cache)
+    sent_domains: set = load_applied_domains()
     applied_auto = 0
     manual_jobs = []
-    sent_emails: set = set()  # deduplication dans ce cycle
     for job in new_jobs:
         title_lower = job.get("title", "").lower()
         # search_query exclus intentionnellement : contient le terme de recherche LinkedIn/JobBank
@@ -166,19 +169,28 @@ async def run_workflow(jobbank, linkedin, multi, ft, hh, google, jobteaser,
             job["applied"] = False
             manual_jobs.append(job)
             continue
-        email_key = (job.get("apply_email") or "").lower().strip()
-        if email_key and email_key in sent_emails:
-            logger.info(f"Deja envoye ce cycle (meme email) : {job['title']} — ignore")
+        if applied_auto >= MAX_APPLY_PER_CYCLE:
+            logger.info(f"Plafond {MAX_APPLY_PER_CYCLE} candidatures/cycle atteint — arret")
             job["applied"] = False
             manual_jobs.append(job)
             continue
+
+        apply_email = (job.get("apply_email") or "").lower().strip()
+        email_domain = apply_email.split("@")[-1] if "@" in apply_email else ""
+        if email_domain and email_domain in sent_domains:
+            logger.info(f"Domaine deja contacte ({email_domain}) : {job['title']} — ignore")
+            job["applied"] = False
+            manual_jobs.append(job)
+            continue
+
         success = await applier.apply_to_job(job)
         if success:
             job["applied"] = True
             applied_auto += 1
-            if email_key:
-                sent_emails.add(email_key)
-            await db.mark_applied(job["url"], job.get("apply_email", ""))
+            if email_domain:
+                sent_domains.add(email_domain)
+            save_applied_email(apply_email)
+            await db.mark_applied(job["url"], apply_email)
         else:
             job["applied"] = False
             manual_jobs.append(job)
