@@ -4,7 +4,7 @@ Adapte chaque lettre au poste specifique en matchant les competences du profil
 avec les exigences detectees dans l'offre.
 """
 from typing import List, Dict
-from app.config.user_profile import PROFILE
+from app.config.user_profile import PROFILE, PROFILE_EN
 
 # Competences du candidat avec descriptions detaillees
 CANDIDATE_SKILLS = {
@@ -266,4 +266,192 @@ Modou Khabane Mbaye
 LinkedIn : {PROFILE['linkedin']}
 Portfolio : {PROFILE['portfolio']}"""
 
+    return letter
+
+
+# ─── Version anglaise ─────────────────────────────────────────────────────────
+
+CANDIDATE_SKILLS_EN = {
+    "qgis":             "QGIS (cartography, spatial analysis, thematic map production)",
+    "arcgis":           "ArcGIS Pro and ArcMap (geoprocessing, advanced spatial analysis)",
+    "arcmap":           "ArcGIS Pro and ArcMap (geoprocessing, advanced spatial analysis)",
+    "arcgis pro":       "ArcGIS Pro (spatial modelling, advanced analysis)",
+    "fme":              "FME (geospatial data transformation and database integration)",
+    "python":           "Python (geospatial automation, GIS data pipelines, scripting)",
+    "automatisation":   "Python automation of GIS workflows (data updates, automated maps)",
+    "automation":       "Python geospatial automation (GIS data pipelines, automated mapping)",
+    "webmapping":       "Interactive webmapping application development",
+    "web mapping":      "Interactive web mapping application development",
+    "sig":              "GIS — design, management, analysis and automation of geospatial data",
+    "gis":              "GIS — spatial analysis, mapping, automation and geoprocessing",
+    "geomatique":       "Applied Geomatics (GIS, cartography, remote sensing, Python automation)",
+    "geomatics":        "Geomatics (spatial analysis, cartography, remote sensing, Python automation)",
+    "teledetection":    "Remote sensing and satellite image interpretation",
+    "remote sensing":   "Remote sensing and satellite image interpretation",
+    "cartographie":     "Cartography and automated thematic map production (QGIS, ArcGIS)",
+    "cartography":      "Cartography and automated thematic map production",
+    "postgis":          "PostGIS (geospatial databases)",
+    "autocad":          "AutoCAD (technical drawing and cartography)",
+    "lidar":            "LiDAR (3D data acquisition and processing)",
+    "drone":            "Drone and aerial photogrammetry",
+    "stereorestitution":"Stereo-restitution and visual analysis of aerial imagery",
+    "environnement":    "Environmental management and impact assessment (QSHE, field inspections)",
+    "environment":      "Environmental management and impact assessment (QSHE)",
+    "ecologie":         "Ecological analysis and natural environment management",
+    "ecology":          "Ecological analysis and natural environment management",
+    "hydrologie":       "Hydrology and water resource management",
+    "inondation":       "Flood zone mapping and spatial risk analysis (GIS buffers, intersections)",
+    "flood":            "Flood zone mapping and spatial risk analysis (GIS buffers, intersections)",
+    "infrastructure":   "Infrastructure mapping and spatial vulnerability analysis",
+    "terrain":          "Field data collection and validation",
+    "field":            "Field data collection and validation",
+    "bases de donnees": "Geospatial database management (Studio3T, BigQuery, PostGIS, PhpPgAdmin)",
+    "database":         "Geospatial database management (Studio3T, BigQuery, PostGIS)",
+    "analyse spatiale": "Advanced spatial analysis (intersections, buffers, overlays, geoprocessing)",
+    "spatial analysis": "Advanced spatial analysis (intersections, buffers, overlays, geoprocessing)",
+    "amenagement":      "Territorial planning and spatial planning (GIS)",
+    "urban planning":   "Urban and territorial planning with GIS tools",
+    "bigquery":         "Google Cloud BigQuery (large-scale geospatial data processing)",
+    "cloud":            "Google Cloud BigQuery (large-scale geospatial data processing)",
+    "risque":           "Spatial risk analysis and infrastructure vulnerability mapping (GIS)",
+    "risk":             "Spatial risk analysis and infrastructure vulnerability mapping (GIS)",
+    "urbanisme":        "GIS applied to urban planning and territorial management",
+    "foresterie":       "Remote sensing and GIS for forest management",
+    "forestry":         "Remote sensing and GIS for forest management and monitoring",
+    "agriculture":      "Remote sensing applied to precision agriculture (satellite imagery)",
+    "energie":          "Energy infrastructure mapping and spatial risk analysis",
+    "energy":           "Energy infrastructure mapping and spatial risk analysis (GIS)",
+    "transport":        "GIS applied to transport networks and flow analysis",
+    "municipal":        "GIS and cartography for municipal management and urban planning",
+    "conservation":     "Spatial analysis for environmental conservation and biodiversity monitoring",
+    "wildlife":         "Remote sensing and spatial analysis for wildlife habitat monitoring",
+    "natural resources":"GIS and remote sensing for natural resource management",
+}
+
+_EN_PROJECT_DESCRIPTIONS = [
+    {
+        "name": "Geomatics & GIS Internship — Senelec (Feb.–Apr. 2026)",
+        "description": (
+            "Automated cartography of electrical infrastructure in flood-prone zones (QGIS, ArcGIS Pro). "
+            "Built Python pipelines for GIS data updates and thematic map production. "
+            "Developed an interactive webmapping application to visualize risk zones. "
+            "Managed geospatial databases (PostGIS, BigQuery, Studio3T)."
+        ),
+        "keywords": [
+            "sig", "gis", "python", "automatisation", "automation", "webmapping", "web mapping",
+            "infrastructure", "inondation", "flood", "qgis", "cartographie", "cartography",
+            "energie", "energy", "risque", "risk", "spatial", "analyse spatiale", "postgis",
+        ],
+    },
+    {
+        "name": "Airport Operations Internship — Blaise Diagne International Airport (Summer 2025)",
+        "description": (
+            "Managed and integrated geospatial databases using FME and QGIS. "
+            "Performed aerial stereo-restitution and high-resolution photointerpretation. "
+            "Applied remote sensing to precision agriculture (satellite imagery). "
+            "QSHE field inspections and airport infrastructure assessment."
+        ),
+        "keywords": [
+            "fme", "terrain", "field", "infrastructure", "inspection", "environnement",
+            "environment", "qshe", "qgis", "stereorestitution", "transport", "teledetection",
+            "remote sensing", "agriculture",
+        ],
+    },
+    {
+        "name": "Mining Cartography — Aldermac Site (Fall 2024)",
+        "description": (
+            "Produced complete thematic maps integrating topographic surveys, aerial imagery and "
+            "historical datasets. Applied advanced georeferencing and spatial analysis techniques."
+        ),
+        "keywords": [
+            "cartographie", "cartography", "topographie", "spatial", "qgis", "arcgis",
+            "mining", "minier",
+        ],
+    },
+]
+
+
+def _find_relevant_projects_en(job_skills: List[str]) -> List[Dict]:
+    scored = []
+    for proj in _EN_PROJECT_DESCRIPTIONS:
+        score = sum(1 for kw in proj["keywords"] if kw in job_skills)
+        if score > 0:
+            scored.append((score, proj))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [p for _, p in scored[:1]]
+
+
+def generate_cover_letter_en(job: Dict) -> str:
+    """English cover letter — used for English-language job postings."""
+    title = job.get("title", "the position")
+    company = job.get("company", "your organization")
+    job_skills = detect_job_skills(job)
+    relevant_projects = _find_relevant_projects_en(job_skills)
+
+    # Opening
+    opening = (
+        f"I am a 2nd-year student in Applied Geomatics for the Environment at "
+        f"Universite de Sherbrooke (Canada), co-operative program, "
+        f"and I am writing to apply for the {title} position at {company}."
+    )
+
+    # Skills paragraph
+    if job_skills:
+        en_skill_descs = [CANDIDATE_SKILLS_EN.get(s, "") for s in job_skills if s in CANDIDATE_SKILLS_EN]
+        en_skill_descs = [d for d in en_skill_descs if d][:3]
+        skills_para = (
+            f"My profile directly matches the requirements of this position. "
+            f"Key competencies I bring: {' ; '.join(en_skill_descs)}. "
+            f"These skills were built through my academic training and two hands-on geomatics internships."
+        )
+    else:
+        skills_para = (
+            f"My geomatics training has given me solid skills in spatial analysis, "
+            f"cartography (QGIS, ArcGIS Pro), remote sensing, "
+            f"and geospatial data management (FME, Python, PostGIS)."
+        )
+
+    # Project paragraph
+    if relevant_projects:
+        proj = relevant_projects[0]
+        projects_para = (
+            f"In particular, my {proj['name']} demonstrates my ability to deliver concrete results: "
+            f"{proj['description']}"
+        )
+    else:
+        projects_para = (
+            f"During my internship at Senelec (Senegal, Feb.-Apr. 2026), I automated the cartography "
+            f"of electrical infrastructure exposed to flooding, built Python GIS pipelines, "
+            f"and developed an interactive webmapping application — preparing me for "
+            f"technically demanding environments."
+        )
+
+    # Motivation
+    motivation = (
+        f"Your work in this field aligns closely with my professional goals and academic background. "
+        f"I am confident I can make a meaningful contribution to your team "
+        f"while further developing my expertise."
+    )
+
+    # Availability
+    availability = (
+        f"I am available for a 3-4 month internship from September to December 2026, "
+        f"on-site or hybrid as required. I am open to compensation as per your organization's guidelines."
+    )
+
+    letter = (
+        f"{opening}\n\n"
+        f"{skills_para}\n\n"
+        f"{projects_para}\n\n"
+        f"{motivation}\n\n"
+        f"{availability}\n\n"
+        f"I would welcome the opportunity to discuss my application further. "
+        f"Please find my resume, LinkedIn profile ({PROFILE_EN['linkedin']}) "
+        f"and portfolio ({PROFILE_EN['portfolio']}) attached.\n\n"
+        f"Yours sincerely,\n\n"
+        f"Modou Khabane Mbaye\n"
+        f"{PROFILE_EN['phone']} | {PROFILE_EN['email']}\n"
+        f"LinkedIn: {PROFILE_EN['linkedin']}\n"
+        f"Portfolio: {PROFILE_EN['portfolio']}"
+    )
     return letter

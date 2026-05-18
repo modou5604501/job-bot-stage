@@ -13,13 +13,16 @@ from email import encoders
 from typing import Dict, Optional
 from loguru import logger
 from app.config.settings import Settings
-from app.config.user_profile import PROFILE
+from app.config.user_profile import PROFILE, PROFILE_EN
 from app.ai.cover_letter_engine import generate_cover_letter as generate_template_letter
-from app.ai.cv_adapter_engine import generate_adapted_cv
+from app.ai.cover_letter_engine import generate_cover_letter_en
+from app.ai.cv_adapter_engine import generate_adapted_cv, _is_english_job
 
 
 def _build_subject(job: Dict) -> str:
     title = job.get("title", "le poste")
+    if _is_english_job(job):
+        return f"Application — {title} | Modou Khabane Mbaye, Geomatics Student"
     region = job.get("region", job.get("location", "")).lower()
     if any(k in region for k in ["france", "suisse", "europe"]):
         return f"Candidature au poste de {title} — Modou Khabane Mbaye, etudiant en Geomatique"
@@ -40,15 +43,17 @@ class AutoApply:
                 logger.warning(f"Claude IA indisponible, fallback template : {e}")
 
     async def _generate_letter(self, job: Dict) -> str:
-        """Genere la lettre via Claude IA si disponible, sinon template adaptatif"""
+        """Genere la lettre via Claude IA si disponible, sinon template adaptatif (FR ou EN selon le poste)"""
+        en = _is_english_job(job)
+        profile = PROFILE_EN if en else PROFILE
         if self._claude:
             try:
-                letter = await self._claude.generate_cover_letter(job, PROFILE)
+                letter = await self._claude.generate_cover_letter(job, profile)
                 if letter and "Erreur" not in letter:
                     return letter
             except Exception as e:
                 logger.warning(f"Erreur Claude, fallback template : {e}")
-        return generate_template_letter(job)
+        return generate_cover_letter_en(job) if en else generate_template_letter(job)
 
     async def apply_to_job(self, job: Dict) -> bool:
         """
@@ -69,7 +74,8 @@ class AutoApply:
             # CV adapte ATS genere en < 5s pour ce poste precis
             adapted_cv_bytes = generate_adapted_cv(job)
 
-            msg = self._build_application(job, apply_email, cover_letter, adapted_cv_bytes)
+            msg = self._build_application(job, apply_email, cover_letter, adapted_cv_bytes,
+                                      en=_is_english_job(job))
             await aiosmtplib.send(
                 msg,
                 hostname=self.settings.smtp_host,
@@ -92,17 +98,17 @@ class AutoApply:
             return False
 
     def _build_application(self, job: Dict, to_email: str, cover_letter: str,
-                           adapted_cv_bytes: bytes = b"") -> MIMEMultipart:
+                           adapted_cv_bytes: bytes = b"", en: bool = False) -> MIMEMultipart:
         """Construit l'email envoye a l'entreprise avec CV adapte ATS"""
         subject = _build_subject(job)
         msg = MIMEMultipart("mixed")
         msg["Subject"] = subject
         msg["From"] = f"Modou Khabane Mbaye <{self.settings.smtp_user}>"
         msg["To"] = to_email
-        msg["Reply-To"] = PROFILE["email"]
+        msg["Reply-To"] = PROFILE_EN["email"] if en else PROFILE["email"]
 
         html_part = MIMEMultipart("alternative")
-        html_part.attach(MIMEText(self._build_html_body(cover_letter), "html", "utf-8"))
+        html_part.attach(MIMEText(self._build_html_body(cover_letter, en=en), "html", "utf-8"))
         msg.attach(html_part)
 
         # Priorite 1 : CV adapte ATS genere dynamiquement pour ce poste
@@ -211,7 +217,14 @@ class AutoApply:
         except Exception as e:
             logger.warning(f"Impossible d'envoyer l'email de confirmation : {e}")
 
-    def _build_html_body(self, cover_letter: str) -> str:
+    def _build_html_body(self, cover_letter: str, en: bool = False) -> str:
+        p = PROFILE_EN if en else PROFILE
+        label_tel = "Phone" if en else "Tel"
+        label_prog = (
+            "Bachelor's in Applied Geomatics for the Environment — Universite de Sherbrooke | Co-op program"
+            if en else
+            "Etudiant en Geomatique appliquee a l'environnement — Universite de Sherbrooke | Programme cooperatif"
+        )
         return f"""
         <html>
         <body style="font-family:Arial,sans-serif; max-width:650px; margin:auto; padding:24px; color:#333;">
@@ -221,13 +234,12 @@ class AutoApply:
             <br>
             <div style="border-top:1px solid #ddd; padding-top:16px; font-size:13px; color:#555;">
                 <strong>Modou Khabane Mbaye</strong><br>
-                Etudiant en Geomatique appliquee a l'environnement<br>
-                Universite de Sherbrooke | Programme cooperatif<br>
+                {label_prog}<br>
                 <br>
-                Tel : {PROFILE['phone']}<br>
-                Email : <a href="mailto:{PROFILE['email']}">{PROFILE['email']}</a><br>
-                LinkedIn : <a href="{PROFILE['linkedin']}">{PROFILE['linkedin']}</a><br>
-                Portfolio : <a href="{PROFILE['portfolio']}">{PROFILE['portfolio']}</a>
+                {label_tel} : {p['phone']}<br>
+                Email : <a href="mailto:{p['email']}">{p['email']}</a><br>
+                LinkedIn : <a href="{p['linkedin']}">{p['linkedin']}</a><br>
+                Portfolio : <a href="{p['portfolio']}">{p['portfolio']}</a>
             </div>
         </body>
         </html>

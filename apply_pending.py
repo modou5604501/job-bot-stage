@@ -39,6 +39,14 @@ async def main():
     applier = AutoApply(settings)
     hunter = HunterEmailFinder(settings.hunter_io_api_key) if settings.hunter_io_api_key else None
 
+    # Recuperer les emails deja utilises (deduplication inter-cycles)
+    already_applied_emails: set = set()
+    with db.SessionLocal() as session:
+        applied_rows = session.query(Job).filter_by(applied=True).all()
+        for r in applied_rows:
+            if r.apply_email:
+                already_applied_emails.add(r.apply_email.lower().strip())
+
     # Récupérer tous les jobs non postulés
     with db.SessionLocal() as session:
         pending = session.query(Job).filter_by(applied=False).order_by(
@@ -105,9 +113,17 @@ async def main():
             skipped += 1
             continue
 
+        # Deduplication : evite de re-postuler au meme email dans le meme cycle
+        email_key = job["apply_email"].lower().strip()
+        if email_key in already_applied_emails:
+            logger.info(f"Deja postule (meme email) : {job['title']} @ {job.get('company', '')} — ignore")
+            skipped += 1
+            continue
+
         success = await applier.apply_to_job(job)
         if success:
             applied += 1
+            already_applied_emails.add(email_key)
             await db.mark_applied(job["url"], job.get("apply_email", ""))
         else:
             skipped += 1

@@ -148,6 +148,7 @@ async def run_workflow(jobbank, linkedin, multi, ft, hh, google, jobteaser,
     }
     applied_auto = 0
     manual_jobs = []
+    sent_emails: set = set()  # deduplication dans ce cycle
     for job in new_jobs:
         title_lower = job.get("title", "").lower()
         # search_query exclus intentionnellement : contient le terme de recherche LinkedIn/JobBank
@@ -165,10 +166,18 @@ async def run_workflow(jobbank, linkedin, multi, ft, hh, google, jobteaser,
             job["applied"] = False
             manual_jobs.append(job)
             continue
+        email_key = (job.get("apply_email") or "").lower().strip()
+        if email_key and email_key in sent_emails:
+            logger.info(f"Deja envoye ce cycle (meme email) : {job['title']} — ignore")
+            job["applied"] = False
+            manual_jobs.append(job)
+            continue
         success = await applier.apply_to_job(job)
         if success:
             job["applied"] = True
             applied_auto += 1
+            if email_key:
+                sent_emails.add(email_key)
             await db.mark_applied(job["url"], job.get("apply_email", ""))
         else:
             job["applied"] = False
