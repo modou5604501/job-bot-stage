@@ -45,5 +45,17 @@ jobs:
           HUNTER_IO_API_KEY: ${{ secrets.HUNTER_IO_API_KEY }}
           INDEED_SEARCH_QUERIES: geomatique,geomatics,GIS,environment intern,stage environnement,stage topographie,hydrologie,amenagement territoire,remote sensing,stage ecologie,cartographie
           INDEED_LOCATION: Canada
-          # CV_PATH non defini : le bot utilise le CV ATS genere automatiquement par cv_adapter_engine.py
         run: python main.py --run-once
+
+      - name: Postuler aux jobs en attente (sans email au cycle precedent)
+        env:
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: "587"
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          NOTIFICATION_EMAIL: ${{ secrets.SMTP_USER }}
+          SMS_EMAIL: ${{ secrets.SMS_EMAIL }}
+          DATABASE_URL: sqlite:///jobs.db
+          LOG_LEVEL: INFO
+          HUNTER_IO_API_KEY: ${{ secrets.HUNTER_IO_API_KEY }}
+        run: python apply_pending.py

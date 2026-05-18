@@ -23,6 +23,7 @@ from app.notifier.inbox_monitor import InboxMonitor
 from app.notifier.auto_apply import AutoApply
 from app.utils.triage import triage_jobs
 from app.utils.hunter_email_finder import HunterEmailFinder
+from app.utils.smart_email_guesser import enrich_jobs_smart
 
 INTERVAL_HEURES = 2
 
@@ -119,10 +120,14 @@ async def run_workflow(jobbank, linkedin, multi, ft, hh, google, jobteaser,
     relevant_jobs, rejected = triage_jobs(all_jobs)
     logger.info(f"Triage : {len(relevant_jobs)} retenues | {len(rejected)} ignorees")
 
-    # 10. Hunter.io — enrichissement emails RH manquants (si cle configuree)
+    # 10. Enrichissement emails — Hunter.io puis scraping/devinette
     if hunter:
         logger.info("=== Hunter.io : recherche emails RH manquants ===")
         relevant_jobs = await hunter.enrich_jobs(relevant_jobs)
+
+    # Scraping avancé + devinette pour les jobs restants sans email
+    logger.info("=== Smart email guesser : scraping + devinette ===")
+    relevant_jobs = await enrich_jobs_smart(relevant_jobs)
 
     # 11. Sauvegarde (deduplication — evite de repostuler)
     new_jobs = await db.save_jobs(relevant_jobs)
