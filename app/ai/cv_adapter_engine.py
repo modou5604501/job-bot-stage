@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Dict, List
 from loguru import logger
 
-from app.config.user_profile import PROFILE
+from app.config.user_profile import PROFILE, PROFILE_EN
 from app.ai.cover_letter_engine import (
     CANDIDATE_SKILLS,
     detect_job_skills,
@@ -238,12 +238,128 @@ def _ordered_skills(job_skills: List[str]) -> List[tuple]:
     return result
 
 
+def _en_ordered_skills(job_skills: List[str]) -> List[tuple]:
+    matched: set = set()
+    for sk in job_skills:
+        if sk in _EN_KW_SKILL_MAP:
+            matched.add(_EN_KW_SKILL_MAP[sk][1])
+    group_scores = {name: sum(1 for it in items if it in matched)
+                    for name, items in _EN_SKILLS_GROUPED}
+    ordered = sorted(_EN_SKILLS_GROUPED, key=lambda g: group_scores.get(g[0], 0), reverse=True)
+    result = []
+    for name, items in ordered:
+        matched_first = [it for it in items if it in matched]
+        rest = [it for it in items if it not in matched]
+        result.append((name, matched_first + rest))
+    return result
+
+
+def _en_ordered_experiences(job_skills: List[str]) -> List[Dict]:
+    exps = [dict(e) for e in _EN_EXPERIENCES]
+    for exp in exps:
+        exp["_score"] = sum(1 for sk in job_skills if sk in exp["keywords"])
+    exps.sort(key=lambda e: e["_score"], reverse=True)
+    return exps
+
+
 def _ordered_experiences(job_skills: List[str]) -> List[Dict]:
     exps = [dict(e) for e in _EXPERIENCES]
     for exp in exps:
         exp["_score"] = sum(1 for sk in job_skills if sk in exp["keywords"])
     exps.sort(key=lambda e: e["_score"], reverse=True)
     return exps
+
+
+_EN_SKILLS_GROUPED = [
+    ("GIS / Geomatics", [
+        "QGIS", "ArcGIS Pro (ArcMap)", "FME", "PostGIS", "AutoCAD",
+        "GeoAcces / GeoIndex", "PhpPgAdmin",
+    ]),
+    ("Programming & Data", [
+        "Python (geospatial automation)", "Google Cloud BigQuery",
+        "Studio3T", "SQL / NoSQL",
+    ]),
+    ("Remote Sensing & Cartography", [
+        "Satellite image interpretation", "Aerial stereo-restitution",
+        "Automated thematic mapping", "Interactive webmapping",
+    ]),
+    ("Spatial Analysis & Field", [
+        "Intersections / Buffers / Overlays", "Spatial risk analysis",
+        "Advanced geoprocessing", "Field data collection / QSHE",
+    ]),
+]
+
+_EN_KW_SKILL_MAP = {
+    "qgis":           ("GIS / Geomatics", "QGIS"),
+    "arcgis":         ("GIS / Geomatics", "ArcGIS Pro (ArcMap)"),
+    "fme":            ("GIS / Geomatics", "FME"),
+    "postgis":        ("GIS / Geomatics", "PostGIS"),
+    "python":         ("Programming & Data", "Python (geospatial automation)"),
+    "automation":     ("Programming & Data", "Python (geospatial automation)"),
+    "bigquery":       ("Programming & Data", "Google Cloud BigQuery"),
+    "remote sensing": ("Remote Sensing & Cartography", "Satellite image interpretation"),
+    "cartography":    ("Remote Sensing & Cartography", "Automated thematic mapping"),
+    "webmapping":     ("Remote Sensing & Cartography", "Interactive webmapping"),
+    "spatial":        ("Spatial Analysis & Field", "Intersections / Buffers / Overlays"),
+    "risk":           ("Spatial Analysis & Field", "Spatial risk analysis"),
+    "field":          ("Spatial Analysis & Field", "Field data collection / QSHE"),
+    "flood":          ("Spatial Analysis & Field", "Spatial risk analysis"),
+}
+
+_EN_EXPERIENCES = [
+    {
+        "title": "Geomatics & GIS Intern",
+        "company": "Senelec - National Electricity Company",
+        "period": "Feb. 2026 - Apr. 2026  |  Dakar, Senegal",
+        "bullets": [
+            "Automated cartography of electrical infrastructure in flood-prone zones",
+            "Python automation of GIS data pipelines (updates, thematic maps)",
+            "Advanced spatial analysis: intersections, buffers, overlays (QGIS, ArcGIS Pro)",
+            "Built interactive webmapping application to visualize risk zones",
+            "Managed geospatial databases (PostGIS, BigQuery, Studio3T)",
+        ],
+        "keywords": {
+            "gis", "python", "automation", "webmapping", "infrastructure",
+            "flood", "energy", "risk", "spatial", "qgis", "cartography",
+            "postgis", "bigquery", "cloud",
+        },
+    },
+    {
+        "title": "Airport Operations Intern",
+        "company": "Blaise Diagne International Airport (AIBD)",
+        "period": "Summer 2025  |  Dakar, Senegal",
+        "bullets": [
+            "Managed and integrated geospatial databases via FME and QGIS",
+            "Performed aerial stereo-restitution and high-resolution photointerpretation",
+            "QSHE field inspections and airport infrastructure assessment",
+            "Applied remote sensing to precision agriculture (satellite imagery)",
+            "Collected and validated geospatial field data",
+        ],
+        "keywords": {
+            "fme", "field", "infrastructure", "inspection", "environment",
+            "qshe", "qgis", "remote sensing", "agriculture", "transport",
+        },
+    },
+]
+
+
+def _is_english_job(job: Dict) -> bool:
+    """Detecte si l'offre est principalement en anglais."""
+    text = f"{job.get('title','')} {job.get('description','')[:500]}".lower()
+    en_kw = ["intern", "internship", "co-op", "coop", "geomatics", "gis technician",
+             "gis analyst", "remote sensing", "spatial analyst", "mapping technician",
+             "environmental technician", "natural resources"]
+    fr_kw = ["stage", "stagiaire", "alternance", "geomatique", "environnement",
+             "teledetection", "cartographie", "amenagement"]
+    en_score = sum(1 for k in en_kw if k in text)
+    fr_score = sum(1 for k in fr_kw if k in text)
+    # Anglais si le titre est en anglais OU si score anglais > français
+    title = job.get("title", "").lower()
+    title_is_en = any(k in title for k in ["intern", "technician", "analyst", "specialist", "officer"])
+    title_is_fr = any(k in title for k in ["stage", "stagiaire", "charg", "geomati"])
+    if title_is_en and not title_is_fr:
+        return True
+    return en_score > fr_score
 
 
 # ─── Point d'entree public ────────────────────────────────────────────────────
@@ -262,6 +378,7 @@ def generate_adapted_cv(job: Dict) -> bytes:
     country    = detect_country(job)
     job_title  = job.get("title", "poste en geomatique")
     company    = job.get("company", "")
+    en         = _is_english_job(job)  # True = CV en anglais
 
     pdf = _AtsCV()
     pdf.setup()
@@ -276,51 +393,72 @@ def generate_adapted_cv(job: Dict) -> bytes:
     pdf.cell(0, 9, "MODOU KHABANE MBAYE", ln=True, align="C")
     pdf.set_font("Helvetica", "", 8.5)
     pdf.set_text_color(*pdf._c(pdf.MED))
+    p = PROFILE_EN if en else PROFILE
     pdf.cell(0, 5,
-        _safe(f"{PROFILE['email']}  |  {PROFILE['phone']}  |  Sherbrooke, QC, Canada"),
+        _safe(f"{p['email']}  |  {p['phone']}  |  Sherbrooke, QC, Canada"),
         ln=True, align="C")
     pdf.cell(0, 5,
-        _safe(f"LinkedIn : {PROFILE['linkedin']}   Portfolio : {PROFILE['portfolio']}"),
+        _safe(f"LinkedIn : {p['linkedin']}   Portfolio : {p['portfolio']}"),
         ln=True, align="C")
     pdf.set_y(34)
 
     # ── Profil professionnel (tailore ATS) ───────────────────────────────────
-    pdf.section_title("Profil professionnel")
+    pdf.section_title("Professional Profile" if en else "Profil professionnel")
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(*pdf._c(pdf.DARK))
-    pdf.multi_cell(0, 5, _profile_summary(job_skills, job_title, company, country))
+    if en:
+        skills_str = ", ".join(job_skills[:4]) if job_skills else "GIS, remote sensing, Python, spatial analysis"
+        summary_en = _safe(
+            f"2nd-year student in Applied Geomatics for the Environment "
+            f"(Universite de Sherbrooke, co-op program), applying for the position of "
+            f"{job_title}. Key skills: {skills_str}. "
+            f"Two hands-on GIS/geomatics internships in demanding international environments."
+        )
+        pdf.multi_cell(0, 5, summary_en)
+    else:
+        pdf.multi_cell(0, 5, _profile_summary(job_skills, job_title, company, country))
 
     # ── Competences (reordonnees par pertinence) ─────────────────────────────
-    CONTENT_W = 210 - 2 * pdf.MAR   # largeur utile totale (mm)
-    LABEL_W   = 58                   # colonne label fixe (mm)
-    ITEMS_W   = CONTENT_W - LABEL_W  # colonne items (mm)
+    CONTENT_W = 210 - 2 * pdf.MAR
+    LABEL_W   = 58
+    ITEMS_W   = CONTENT_W - LABEL_W
 
-    pdf.section_title("Competences techniques")
-    for grp_name, items in _ordered_skills(job_skills):
+    skills_groups = _en_ordered_skills(job_skills) if en else _ordered_skills(job_skills)
+    pdf.section_title("Technical Skills" if en else "Competences techniques")
+    for grp_name, items in skills_groups:
         y0 = pdf.get_y()
         pdf.set_font("Helvetica", "B", 8.5)
         pdf.set_text_color(*pdf._c(pdf.PRI))
-        pdf.cell(LABEL_W, 5, _safe(grp_name + " :"), ln=False)
+        pdf.cell(LABEL_W, 5, _safe(grp_name + ":"), ln=False)
         pdf.set_font("Helvetica", "", 8.5)
         pdf.set_text_color(*pdf._c(pdf.DARK))
         pdf.multi_cell(ITEMS_W, 5, _safe("  |  ".join(items)))
-        if pdf.get_y() - y0 < 5:  # forcer au moins une ligne de hauteur
+        if pdf.get_y() - y0 < 5:
             pdf.ln(1)
 
     # ── Formation ────────────────────────────────────────────────────────────
-    pdf.section_title("Formation")
+    pdf.section_title("Education" if en else "Formation")
     pdf.set_font("Helvetica", "B", 9.5)
     pdf.set_text_color(*pdf._c(pdf.DARK))
-    pdf.cell(0, 5, "Baccalaureat en Geomatique appliquee a l'environnement", ln=True)
-    pdf.italic_small("Universite de Sherbrooke - Programme cooperatif | Concentration : Gestion environnementale  (2024 - 2027)")
-    pdf.ln(1)
-    pdf.set_font("Helvetica", "B", 9.5)
-    pdf.cell(0, 5, "DEC en Sciences de la Nature", ln=True)
-    pdf.italic_small("Cegep de Sherbrooke  (2022 - 2024)")
+    if en:
+        pdf.cell(0, 5, "B.Sc. Applied Geomatics for the Environment", ln=True)
+        pdf.italic_small("Universite de Sherbrooke - Co-operative program | Environmental Management  (2024 - 2027)")
+        pdf.ln(1)
+        pdf.set_font("Helvetica", "B", 9.5)
+        pdf.cell(0, 5, "DEC in Natural Sciences", ln=True)
+        pdf.italic_small("Cegep de Sherbrooke  (2022 - 2024)")
+    else:
+        pdf.cell(0, 5, "Baccalaureat en Geomatique appliquee a l'environnement", ln=True)
+        pdf.italic_small("Universite de Sherbrooke - Programme cooperatif | Concentration : Gestion environnementale  (2024 - 2027)")
+        pdf.ln(1)
+        pdf.set_font("Helvetica", "B", 9.5)
+        pdf.cell(0, 5, "DEC en Sciences de la Nature", ln=True)
+        pdf.italic_small("Cegep de Sherbrooke  (2022 - 2024)")
 
     # ── Experiences (experience la plus pertinente en premier) ────────────────
-    pdf.section_title("Experiences professionnelles")
-    for exp in _ordered_experiences(job_skills):
+    experiences = _en_ordered_experiences(job_skills) if en else _ordered_experiences(job_skills)
+    pdf.section_title("Professional Experience" if en else "Experiences professionnelles")
+    for exp in experiences:
         pdf.exp_header(_safe(exp["title"]), _safe(exp["period"]))
         pdf.italic_small(_safe(exp["company"]))
         for b in exp["bullets"]:
@@ -328,22 +466,36 @@ def generate_adapted_cv(job: Dict) -> bytes:
         pdf.ln(2)
 
     # ── Projet academique ─────────────────────────────────────────────────────
-    pdf.section_title("Projet academique notable")
-    pdf.exp_header("Cartographie miniere - Site Aldermac", "Automne 2024")
-    pdf.italic_small("Cours GMQ157 - Universite de Sherbrooke")
-    for b in [
-        "Integration de releves topographiques, images aeriennes et donnees historiques",
-        "Production de cartes thematiques completes (georeferencement, analyse spatiale avancee)",
-    ]:
-        pdf.bullet_line(b)
+    pdf.section_title("Academic Project" if en else "Projet academique notable")
+    if en:
+        pdf.exp_header("Mining Cartography - Aldermac Site", "Fall 2024")
+        pdf.italic_small("GMQ157 Course - Universite de Sherbrooke")
+        for b in [
+            "Integration of topographic surveys, aerial imagery and historical datasets",
+            "Production of complete thematic maps (georeferencing, advanced spatial analysis)",
+        ]:
+            pdf.bullet_line(b)
+    else:
+        pdf.exp_header("Cartographie miniere - Site Aldermac", "Automne 2024")
+        pdf.italic_small("Cours GMQ157 - Universite de Sherbrooke")
+        for b in [
+            "Integration de releves topographiques, images aeriennes et donnees historiques",
+            "Production de cartes thematiques completes (georeferencement, analyse spatiale avancee)",
+        ]:
+            pdf.bullet_line(b)
 
     # ── Langues ───────────────────────────────────────────────────────────────
-    pdf.section_title("Langues")
+    pdf.section_title("Languages" if en else "Langues")
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(*pdf._c(pdf.DARK))
-    pdf.cell(0, 5,
-        "Francais : natif (5/5)   |   Anglais : intermediaire (3/5)   |   Wolof : natif (5/5)",
-        ln=True)
+    if en:
+        pdf.cell(0, 5,
+            "French: native (5/5)   |   English: intermediate (3/5)   |   Wolof: native (5/5)",
+            ln=True)
+    else:
+        pdf.cell(0, 5,
+            "Francais : natif (5/5)   |   Anglais : intermediaire (3/5)   |   Wolof : natif (5/5)",
+            ln=True)
 
     result = bytes(pdf.output())
     logger.info(f"CV adapte ATS genere : {len(result)//1024} Ko  ['{job_title}' @ {company}]")

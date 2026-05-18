@@ -19,7 +19,14 @@ class Settings(BaseSettings):
         # Domaines ou la geomatique intervient
         "geospatial intern,spatial analysis intern,urban planning GIS stage,"
         "foresterie SIG stage,gestion risques SIG,infrastructure geospatiale stage,"
-        "amenagement territoire stage,municipal GIS intern"
+        "amenagement territoire stage,municipal GIS intern,"
+        # Nord du Canada (Nunavut, TNO, Yukon, Nunavik, Nord Ontario/Québec)
+        "GIS Nunavut,geomatics Nunavut,environment Nunavut,"
+        "GIS Northwest Territories,geomatics Yukon,environment Yukon,"
+        "GIS northern Canada,environmental technician north,"
+        "geomatics Nunavik,SIG nord Quebec,"
+        "natural resources north intern,land management north intern,"
+        "wildlife technician north,environmental monitoring north"
     )
     indeed_location: str = "Canada"
 

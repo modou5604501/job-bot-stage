@@ -1,4 +1,37 @@
-"""Profil du candidat — utilisé pour personnaliser les lettres de motivation"""
+"""Profil du candidat — utilisé pour personnaliser les lettres de motivation (FR + EN)"""
+
+PROFILE_EN = {
+    "name": "Modou Khabane Mbaye",
+    "email": "modou.khabane.mbaye@usherbrooke.ca",
+    "phone": "+1 (819) 919-8401",
+    "location": "Sherbrooke, QC, Canada",
+    "linkedin": "https://linkedin.com/in/modou-khabane-mbaye-2471a139b",
+    "portfolio": "https://khabanembaye.github.io",
+    "formation": (
+        "Bachelor's in Applied Geomatics for the Environment, Université de Sherbrooke (2024-2027), "
+        "co-operative program, concentration in Environmental Management"
+    ),
+    "experience": (
+        "Geomatics & GIS Internship at Sénélec, Senegal (Feb.-Apr. 2026): automated cartography "
+        "of electrical infrastructure exposed to flooding, Python automation workflows for GIS data management, "
+        "spatial analysis (intersections, buffers), interactive webmapping application development, "
+        "automated thematic map production. "
+        "Airport Operations Internship at Blaise Diagne International Airport, Senegal (Summer 2025): "
+        "FME database management, QGIS cartography, stereo-restitution, "
+        "remote sensing applied to precision agriculture, QSHE."
+    ),
+    "skills": (
+        "QGIS, ArcGIS Pro (ArcMap), FME, Python (geospatial automation, VSCode), "
+        "remote sensing, cartography, spatial analysis, GIS, geoprocessing, "
+        "satellite image interpretation, webmapping, Google Cloud BigQuery, "
+        "Studio3T, PostGIS, AutoCAD, GéoAccès, GéoIndex, PhpPgAdmin"
+    ),
+    "languages": "French (native, 5/5), English (intermediate, 3/5), Wolof (native, 5/5)",
+    "strengths": (
+        "Geospatial automation, webmapping development, analytical rigor, "
+        "autonomy, fast tool mastery, leadership (event coordination)"
+    ),
+}
 
 PROFILE = {
     "name": "Modou Khabane Mbaye",
