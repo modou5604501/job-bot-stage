@@ -134,7 +134,58 @@ class FranceTravailScraper:
                         all_jobs.append(job)
             await self.rate_limiter.wait()
 
+        # Enrichir les jobs sans email avec le detail complet (entreprise.url, urlPostulation)
+        no_email = [j for j in all_jobs if not j.get("apply_email")]
+        if no_email and token:
+            logger.info(f"France Travail : detail complet pour {len(no_email)} jobs sans email...")
+            for job in no_email:
+                offre_id = job["url"].split("/")[-1]
+                detail = await self._fetch_detail(offre_id, token)
+                if detail:
+                    self._enrich_from_detail(job, detail)
+                await self.rate_limiter.wait()
+
         return all_jobs
+
+    async def _fetch_detail(self, offre_id: str, token: str) -> Optional[Dict]:
+        """Fetche le detail complet d'une offre (contact, entreprise.url)."""
+        try:
+            async with httpx.AsyncClient(timeout=15, verify=False) as client:
+                r = await client.get(
+                    f"https://api.francetravail.io/partenaire/offresdemploi/v2/offres/{offre_id}",
+                    headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                )
+                if r.status_code == 200:
+                    return r.json()
+        except Exception as e:
+            logger.debug(f"France Travail detail {offre_id}: {e}")
+        return None
+
+    def _enrich_from_detail(self, job: Dict, detail: Dict):
+        """Enrichit un job depuis le detail complet : email, company_url, urlPostulation."""
+        contact = detail.get("contact", {})
+
+        # Email direct dans les coordonnees
+        if not job.get("apply_email"):
+            for field in ["courriel", "coordonnees1", "coordonnees2", "coordonnees3"]:
+                val = contact.get(field, "") or ""
+                if "@" in val:
+                    job["apply_email"] = val.strip()
+                    break
+
+        # urlPostulation : peut etre mailto: ou HTTP
+        url_post = contact.get("urlPostulation", "") or ""
+        if not job.get("apply_email") and url_post.startswith("mailto:"):
+            job["apply_email"] = url_post.replace("mailto:", "").split("?")[0].strip()
+        elif url_post and not url_post.startswith("mailto:"):
+            job["apply_url"] = url_post  # URL externe → sera scrappe par guesser
+
+        # Site web de l'entreprise (meme pour employeur anonyme)
+        company_url = detail.get("entreprise", {}).get("url", "") or ""
+        if company_url:
+            job["company_url"] = company_url
+            if not job.get("company"):
+                job["company"] = detail.get("entreprise", {}).get("nom", "") or ""
 
     async def _api_query(self, query: str, token: str, start: int = 0) -> List[Dict]:
         jobs: List[Dict] = []

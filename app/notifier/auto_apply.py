@@ -7,7 +7,6 @@ Strategie ATS : CV personnalise par offre en < 5s (mots-cles injectes, experienc
 import os
 import aiosmtplib
 from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from typing import Dict, Optional
@@ -87,10 +86,6 @@ class AutoApply:
             logger.info(
                 f"[AUTO-APPLY] Candidature envoyee : {job['title']} @ {job.get('company', '')} -> {apply_email}"
             )
-
-            # Email de confirmation au candidat
-            cv_label = "CV adapte ATS" if adapted_cv_bytes else "CV statique"
-            await self._send_confirmation(job, apply_email, cover_letter, cv_label)
             return True
 
         except Exception as e:
@@ -125,97 +120,6 @@ class AutoApply:
 
         return msg
 
-    async def _send_confirmation(self, job: Dict, sent_to: str, cover_letter: str,
-                                 cv_label: str = "CV adapte ATS"):
-        """Email de confirmation envoye au candidat apres chaque depot automatique"""
-        title = job.get("title", "")
-        company = job.get("company", "")
-        location = job.get("location", "")
-        score = job.get("analysis", {}).get("score", "—")
-        level = job.get("analysis", {}).get("level", "—")
-        url = job.get("url", "#")
-        source = job.get("source", "")
-        method = "Claude IA" if self._claude else "Template adaptatif"
-
-        html = f"""
-        <html>
-        <body style="font-family:Arial,sans-serif; max-width:660px; margin:auto; padding:24px; color:#333;">
-
-            <div style="background:#27ae60; color:white; padding:18px 22px; border-radius:8px; margin-bottom:22px;">
-                <h2 style="margin:0; font-size:18px;">Candidature envoyee automatiquement</h2>
-                <p style="margin:6px 0 0 0; opacity:0.9; font-size:13px;">
-                    {title} &nbsp;&bull;&nbsp; {company}
-                </p>
-            </div>
-
-            <table style="width:100%; border-collapse:collapse; margin-bottom:22px; font-size:14px;">
-                <tr style="background:#f4f4f4;">
-                    <td style="padding:8px 12px; font-weight:bold; width:160px;">Poste</td>
-                    <td style="padding:8px 12px;">{title}</td>
-                </tr>
-                <tr>
-                    <td style="padding:8px 12px; font-weight:bold;">Entreprise</td>
-                    <td style="padding:8px 12px;">{company}</td>
-                </tr>
-                <tr style="background:#f4f4f4;">
-                    <td style="padding:8px 12px; font-weight:bold;">Lieu</td>
-                    <td style="padding:8px 12px;">{location}</td>
-                </tr>
-                <tr>
-                    <td style="padding:8px 12px; font-weight:bold;">Email envoye a</td>
-                    <td style="padding:8px 12px;"><a href="mailto:{sent_to}">{sent_to}</a></td>
-                </tr>
-                <tr style="background:#f4f4f4;">
-                    <td style="padding:8px 12px; font-weight:bold;">Pertinence</td>
-                    <td style="padding:8px 12px;">{level} &nbsp;(score : {score})</td>
-                </tr>
-                <tr>
-                    <td style="padding:8px 12px; font-weight:bold;">Source</td>
-                    <td style="padding:8px 12px;"><a href="{url}">{source}</a></td>
-                </tr>
-                <tr style="background:#f4f4f4;">
-                    <td style="padding:8px 12px; font-weight:bold;">Lettre generee par</td>
-                    <td style="padding:8px 12px;">{method}</td>
-                </tr>
-                <tr>
-                    <td style="padding:8px 12px; font-weight:bold;">CV joint</td>
-                    <td style="padding:8px 12px;">{cv_label}</td>
-                </tr>
-            </table>
-
-            <div style="background:#f9f9f9; border-left:4px solid #27ae60;
-                        padding:16px 18px; border-radius:0 6px 6px 0; margin-bottom:18px;">
-                <p style="margin:0 0 10px 0; font-size:12px; color:#888; font-weight:bold; text-transform:uppercase;">
-                    Lettre de motivation envoyee
-                </p>
-                <div style="font-size:13px; line-height:1.75; white-space:pre-line;">{cover_letter}</div>
-            </div>
-
-            <p style="font-size:12px; color:#aaa; text-align:center;">
-                Job Bot — depot automatique | Geomatique &amp; Environnement | Quebec &amp; Canada
-            </p>
-        </body>
-        </html>
-        """
-
-        try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = f"[Depot OK] {title} @ {company}"
-            msg["From"] = self.settings.smtp_user
-            msg["To"] = self.settings.notification_email
-            msg.attach(MIMEText(html, "html", "utf-8"))
-
-            await aiosmtplib.send(
-                msg,
-                hostname=self.settings.smtp_host,
-                port=self.settings.smtp_port,
-                username=self.settings.smtp_user,
-                password=self.settings.smtp_password,
-                start_tls=True,
-            )
-            logger.info(f"Email confirmation depot envoye : {title} @ {company}")
-        except Exception as e:
-            logger.warning(f"Impossible d'envoyer l'email de confirmation : {e}")
 
     def _build_html_body(self, cover_letter: str, en: bool = False) -> str:
         p = PROFILE_EN if en else PROFILE

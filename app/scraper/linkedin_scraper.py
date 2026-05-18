@@ -278,6 +278,21 @@ class LinkedInScraper:
                     if not any(ig in em.lower() for ig in ["linkedin", "example", "noreply", "sentry", "google"]):
                         details["apply_email"] = em
                         break
+
+                # Lien "Apply on company website" (ATS externe : Greenhouse, Lever, Workday...)
+                if not details.get("apply_email"):
+                    for a in soup.find_all("a", href=True):
+                        href = a.get("href", "")
+                        if href and "linkedin.com" not in href and any(
+                            kw in href for kw in [
+                                "greenhouse.io", "lever.co", "bamboohr.com",
+                                "workday.com", "myworkdayjobs.com", "breezy.hr",
+                                "teamtailor.com", "taleo.net", "icims.com",
+                                "/careers/", "/jobs/apply", "/apply/",
+                            ]
+                        ):
+                            details["apply_url"] = href
+                            break
         except Exception as e:
             logger.debug(f"LinkedIn details ({url}): {e}")
         return details

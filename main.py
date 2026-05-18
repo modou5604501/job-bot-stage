@@ -195,13 +195,13 @@ async def run_workflow(jobbank, linkedin, multi, ft, hh, google, jobteaser,
             job["applied"] = False
             manual_jobs.append(job)
 
-    logger.info(f"Depots auto envoyes : {applied_auto} | A traiter manuellement : {len(manual_jobs)}")
-    if applied_auto > 0:
-        logger.info("Candidatures automatiques envoyees avec lettre de motivation + CV")
+    logger.info(f"Depots auto envoyes : {applied_auto} | Sans email trouve : {len(manual_jobs)}")
 
-    # 10. Email recapitulatif (toutes les offres avec statut + lettre de motivation)
-    await notifier.send_digest(new_jobs)
-    logger.info("Email recapitulatif envoye. Cycle termine.")
+    # 1 seul email compact par cycle (uniquement les candidatures envoyees)
+    applied_jobs_list = [j for j in new_jobs if j.get("applied")]
+    if applied_jobs_list:
+        await notifier.send_applied_summary(applied_jobs_list)
+    logger.info("Cycle termine.")
 
 
 async def check_company_replies(monitor, sms):

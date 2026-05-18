@@ -10,6 +10,7 @@ from app.config.settings import Settings
 from app.config.logging import setup_logging
 from app.database.models import JobDatabase, Job
 from app.notifier.auto_apply import AutoApply
+from app.notifier.email_sender import EmailSender
 from app.utils.hunter_email_finder import HunterEmailFinder
 from app.utils.smart_email_guesser import enrich_jobs_smart
 from app.utils.apply_history import load_applied_domains, save_applied_email
@@ -39,6 +40,7 @@ async def main():
     setup_logging(settings.log_level)
     db = JobDatabase(settings)
     applier = AutoApply(settings)
+    notifier = EmailSender(settings)
     hunter = HunterEmailFinder(settings.hunter_io_api_key) if settings.hunter_io_api_key else None
 
     # Historique persistant + DB locale (deduplication multi-niveaux)
@@ -109,6 +111,7 @@ async def main():
     all_relevant = with_email + no_email
     applied = 0
     skipped = 0
+    applied_jobs_recap = []
 
     for job in all_relevant:
         if applied >= MAX_APPLY_PER_CYCLE:
@@ -142,11 +145,16 @@ async def main():
             if email_domain:
                 sent_domains.add(email_domain)
             save_applied_email(apply_email)
+            applied_jobs_recap.append(job)
             await db.mark_applied(job["url"], apply_email)
         else:
             skipped += 1
 
-    logger.info(f"BILAN RATTRAPAGE : {applied} candidatures envoyees | {skipped} ignorees (pas d'email)")
+    logger.info(f"BILAN RATTRAPAGE : {applied} candidatures envoyees | {skipped} ignorees")
+
+    # 1 seul email compact de resume
+    if applied_jobs_recap:
+        await notifier.send_applied_summary(applied_jobs_recap)
 
 
 if __name__ == "__main__":

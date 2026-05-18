@@ -13,9 +13,15 @@ class EmailSender:
         self.settings = settings
 
     async def send_digest(self, jobs: List[Dict]):
-        """Envoie un email recapitulatif avec lettres de motivation personnalisees"""
+        """Desactive : remplace par send_applied_summary pour eviter le spam inbox."""
+        pass  # Ne plus envoyer le digest complet avec lettres de motivation
+
+    async def send_applied_summary(self, applied_jobs: List[Dict]):
+        """Envoie 1 email compact par cycle listant toutes les candidatures envoyees."""
+        if not applied_jobs:
+            return
         try:
-            msg = self._build_digest(jobs)
+            msg = self._build_compact_summary(applied_jobs)
             await aiosmtplib.send(
                 msg,
                 hostname=self.settings.smtp_host,
@@ -24,9 +30,50 @@ class EmailSender:
                 password=self.settings.smtp_password,
                 start_tls=True,
             )
-            logger.info(f"Email envoye avec {len(jobs)} offres")
+            logger.info(f"Resume candidatures : {len(applied_jobs)} depots — 1 email envoye")
         except Exception as e:
-            logger.error(f"Erreur envoi email: {e}")
+            logger.error(f"Erreur envoi resume : {e}")
+
+    def _build_compact_summary(self, applied_jobs: List[Dict]) -> MIMEMultipart:
+        rows = ""
+        for i, job in enumerate(applied_jobs, 1):
+            email_sent = job.get("apply_email", "")
+            url = job.get("url", "#")
+            rows += f"""
+            <tr style="background:{'#f9f9f9' if i%2==0 else 'white'};">
+                <td style="padding:7px 10px;font-size:13px;">{i}</td>
+                <td style="padding:7px 10px;font-size:13px;font-weight:bold;">
+                    <a href="{url}" style="color:#2c3e50;text-decoration:none;">{job['title']}</a>
+                </td>
+                <td style="padding:7px 10px;font-size:13px;">{job.get('company','')}</td>
+                <td style="padding:7px 10px;font-size:13px;color:#555;">{job.get('location','')}</td>
+                <td style="padding:7px 10px;font-size:12px;color:#27ae60;">{email_sent}</td>
+            </tr>"""
+
+        html = f"""<html><body style="font-family:Arial,sans-serif;max-width:750px;margin:auto;padding:16px;color:#333;">
+        <div style="background:#27ae60;color:white;padding:12px 18px;border-radius:6px;margin-bottom:16px;">
+            <b>Job Bot — {len(applied_jobs)} candidature(s) envoyee(s) ce cycle</b>
+        </div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #ddd;border-radius:6px;overflow:hidden;">
+            <thead><tr style="background:#2c3e50;color:white;">
+                <th style="padding:8px 10px;font-size:12px;">#</th>
+                <th style="padding:8px 10px;font-size:12px;text-align:left;">Poste</th>
+                <th style="padding:8px 10px;font-size:12px;text-align:left;">Entreprise</th>
+                <th style="padding:8px 10px;font-size:12px;text-align:left;">Lieu</th>
+                <th style="padding:8px 10px;font-size:12px;text-align:left;">Email envoye a</th>
+            </tr></thead>
+            <tbody>{rows}</tbody>
+        </table>
+        <p style="font-size:11px;color:#aaa;margin-top:12px;text-align:center;">
+            Job Bot automatique — CV adapte ATS joint a chaque candidature
+        </p></body></html>"""
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"[Bot] {len(applied_jobs)} depot(s) stage — {applied_jobs[0].get('title','')[:30]}..."
+        msg["From"] = self.settings.smtp_user
+        msg["To"] = self.settings.notification_email
+        msg.attach(MIMEText(html, "html", "utf-8"))
+        return msg
 
     def _build_digest(self, jobs: List[Dict]) -> MIMEMultipart:
         msg = MIMEMultipart("alternative")

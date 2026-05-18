@@ -50,6 +50,22 @@ AGGREGATORS = {
     "glassdoor.com", "monster.com", "workopolis.com", "aerocontact.com",
 }
 
+# Plateformes ATS : on extrait le nom de l'entreprise depuis l'URL
+ATS_EXTRACTORS = [
+    # boards.greenhouse.io/ecora/jobs/123 → "ecora"
+    (re.compile(r"boards\.greenhouse\.io/([^/?]+)"), 1),
+    # jobs.lever.co/ecora/posting-id → "ecora"
+    (re.compile(r"jobs\.lever\.co/([^/?]+)"), 1),
+    # app.breezy.hr/p/ecora/... → "ecora"
+    (re.compile(r"app\.breezy\.hr/p/([^/?]+)"), 1),
+    # ecora.bamboohr.com/... → "ecora"
+    (re.compile(r"(?:://|[./])([a-z0-9-]+)\.bamboohr\.com", re.I), 1),
+    # ecora.teamtailor.com → "ecora"
+    (re.compile(r"(?:://|[./])([a-z0-9-]+)\.teamtailor\.com", re.I), 1),
+    # workday: ecora.wd5.myworkdayjobs.com → "ecora"
+    (re.compile(r"(?:://|[./])([a-z0-9-]+)\.\w+\.myworkdayjobs\.com", re.I), 1),
+]
+
 
 def _domain_resolves(domain: str) -> bool:
     """Verifie qu'un domaine existe dans le DNS (filtre les domaines completement inventes)."""
@@ -144,17 +160,33 @@ def _extract_domain_from_url(url: str) -> Optional[str]:
     return None
 
 
+def _extract_slug_from_ats_url(url: str) -> Optional[str]:
+    """Extrait le slug entreprise depuis une URL ATS (Greenhouse, Lever, Workday, etc.)."""
+    if not url:
+        return None
+    for pattern, group in ATS_EXTRACTORS:
+        m = pattern.search(url)
+        if m:
+            slug = m.group(group).lower().strip("-").strip("_")
+            slug = re.sub(r"[^a-z0-9]", "", slug)
+            if len(slug) >= 3:
+                return slug
+    return None
+
+
 async def find_email_for_job(job: dict, hunter_cache: dict = None) -> Optional[str]:
     """
     Trouve l'email RH pour un job, dans cet ordre :
-    1. Scraping du site de l'entreprise
-    2. Pattern deviné le plus probable (careers@domain)
-    Retourne l'email ou None si impossible de deviner.
+    1. Scraping du site de l'entreprise (URL directe ou company_url)
+    2. Slug extrait d'une URL ATS (Greenhouse, Lever, Workday…)
+    3. Domaine deviné depuis le nom de l'entreprise (2 mots → 1 mot fallback)
+    4. Pattern careers@ si le domaine répond au DNS
     """
     company = job.get("company", "").strip()
     url = job.get("apply_url") or job.get("url") or ""
+    company_url = job.get("company_url", "")  # fourni par France Travail detail
 
-    # 1. Domaine direct depuis l'URL du job (si c'est le site de l'entreprise)
+    # 1a. URL directe de l'entreprise (pas un agrégateur)
     direct_domain = _extract_domain_from_url(url)
     if direct_domain:
         scraped = await _scrape_emails_from_site(direct_domain.rsplit(".", 1)[0])
@@ -163,36 +195,79 @@ async def find_email_for_job(job: dict, hunter_cache: dict = None) -> Optional[s
             logger.debug(f"Email scrape (URL directe) pour {company}: {best}")
             return best
 
-    # 2. Deviner le domaine depuis le nom de l'entreprise
+    # 1b. Site web de l'entreprise fourni par l'API (France Travail entreprise.url)
+    if company_url:
+        co_domain = _extract_domain_from_url(company_url)
+        if co_domain:
+            scraped = await _scrape_emails_from_site(co_domain.rsplit(".", 1)[0])
+            best = _pick_best_email(scraped)
+            if best:
+                logger.info(f"Email scrape (company_url) pour {company}: {best}")
+                return best
+
+    # 2. Slug depuis URL ATS (Greenhouse, Lever, Workday, BambooHR…)
+    ats_slug = _extract_slug_from_ats_url(url)
+    if ats_slug:
+        if hunter_cache and ats_slug in hunter_cache:
+            return hunter_cache[ats_slug]
+        scraped = await _scrape_emails_from_site(ats_slug)
+        best = _pick_best_email(scraped)
+        if best:
+            logger.info(f"Email scrape (slug ATS '{ats_slug}') pour {company}: {best}")
+            if hunter_cache is not None:
+                hunter_cache[ats_slug] = best
+            return best
+        # Guess à partir du slug ATS
+        for tld in [".ca", ".com", ".fr", ".ch", ".io"]:
+            domain = f"{ats_slug}{tld}"
+            if _domain_resolves(domain):
+                guessed = f"careers@{domain}"
+                logger.info(f"Email devine (ATS slug '{ats_slug}') pour {company}: {guessed}")
+                if hunter_cache is not None:
+                    hunter_cache[ats_slug] = guessed
+                return guessed
+
+    # 3. Domaine depuis le nom de l'entreprise — essai 2 mots puis 1 mot
     domain_base = _company_to_domain(company)
     if not domain_base:
         return None
 
-    # Cache pour éviter de re-scraper la même entreprise
-    if hunter_cache and domain_base in hunter_cache:
-        return hunter_cache[domain_base]
+    cache_key = domain_base
+    if hunter_cache and cache_key in hunter_cache:
+        return hunter_cache[cache_key]
 
-    # 3. Scraping du site web
-    scraped = await _scrape_emails_from_site(domain_base)
-    best = _pick_best_email(scraped)
-    if best:
-        logger.info(f"Email scrape pour {company}: {best}")
-        if hunter_cache is not None:
-            hunter_cache[domain_base] = best
-        return best
+    # Construire la liste de bases à essayer : 2 mots d'abord, puis 1 mot seul
+    name_clean = company.lower().strip()
+    name_clean = re.split(r"[(/\\|]", name_clean)[0].strip()
+    for suffix in LEGAL_SUFFIXES:
+        name_clean = name_clean.replace(suffix, "")
+    words = [w for w in re.split(r"\s+", name_clean.strip()) if len(w) > 2]
+    bases_to_try = [domain_base]
+    if words:
+        single = re.sub(r"[^a-z0-9]", "", words[0])
+        if len(single) >= 3 and single != domain_base:
+            bases_to_try.append(single)
 
-    # 4. Deviner le pattern — seulement si le domaine resout dans le DNS
-    for tld in [".ca", ".com", ".fr", ".ch"]:
-        domain = f"{domain_base}{tld}"
-        if _domain_resolves(domain):
-            guessed = f"careers@{domain}"
-            logger.info(f"Email devine pour {company}: {guessed}")
+    for base in bases_to_try:
+        scraped = await _scrape_emails_from_site(base)
+        best = _pick_best_email(scraped)
+        if best:
+            logger.info(f"Email scrape ('{base}') pour {company}: {best}")
             if hunter_cache is not None:
-                hunter_cache[domain_base] = guessed
-            return guessed
-        logger.debug(f"Domaine inexistant (DNS) : {domain} — ignore")
+                hunter_cache[cache_key] = best
+            return best
 
-    logger.info(f"Aucun domaine DNS valide trouve pour {company} — candidature ignoree")
+        for tld in [".ca", ".com", ".fr", ".ch"]:
+            domain = f"{base}{tld}"
+            if _domain_resolves(domain):
+                guessed = f"careers@{domain}"
+                logger.info(f"Email devine ('{base}') pour {company}: {guessed}")
+                if hunter_cache is not None:
+                    hunter_cache[cache_key] = guessed
+                return guessed
+            logger.debug(f"DNS negatif : {domain}")
+
+    logger.info(f"Aucun domaine valide trouve pour '{company}' — skip")
     return None
 
 
