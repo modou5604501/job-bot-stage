@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  job-bot:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    command: ["python", "main.py", "--continuous"]

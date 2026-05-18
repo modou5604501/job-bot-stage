@@ -1,0 +1,9 @@
+.env
+jobs.db
+*.pdf
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
