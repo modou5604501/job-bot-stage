@@ -32,9 +32,6 @@ jobs:
       - name: Installer les dependances
         run: pip install -r requirements-ci.txt
 
-      - name: Decoder le CV PDF depuis secret
-        run: echo "${{ secrets.CV_BASE64 }}" | base64 -d > cv.pdf
-
       - name: Lancer le bot (cycle complet)
         env:
           SMTP_HOST: smtp.gmail.com
@@ -48,5 +45,5 @@ jobs:
           HUNTER_IO_API_KEY: ${{ secrets.HUNTER_IO_API_KEY }}
           INDEED_SEARCH_QUERIES: geomatique,geomatics,GIS,environment intern,stage environnement,stage topographie,hydrologie,amenagement territoire,remote sensing,stage ecologie,cartographie
           INDEED_LOCATION: Canada
-          CV_PATH: ${{ github.workspace }}/cv.pdf
+          # CV_PATH non defini : le bot utilise le CV ATS genere automatiquement par cv_adapter_engine.py
         run: python main.py --run-once
