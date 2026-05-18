@@ -51,16 +51,26 @@ AGGREGATORS = {
 
 
 def _company_to_domain(company: str) -> Optional[str]:
-    """Devine le domaine d'une entreprise à partir de son nom."""
+    """Devine le domaine d'une entreprise à partir de son nom (max 2 mots significatifs)."""
     if not company or len(company.strip()) < 3:
         return None
     name = company.lower().strip()
+    # Supprimer tout ce qui suit une parenthèse ou un slash (ex: "Crees (Eeyou...)/Cree Nation")
+    name = re.split(r"[(/\\|]", name)[0].strip()
     for suffix in LEGAL_SUFFIXES:
         name = name.replace(suffix, "")
-    name = re.sub(r"[^a-z0-9\-]", "", name).strip("-")
-    if len(name) < 3:
+    # Garder seulement les 2 premiers mots significatifs (longueur > 2)
+    words = [w for w in re.split(r"\s+", name.strip()) if len(w) > 2]
+    if not words:
         return None
-    return name  # ex: "ecora" → chercher ecora.ca / ecora.com / ecora.fr
+    # Utiliser au max 2 mots pour former le domaine
+    domain = "".join(words[:2])
+    domain = re.sub(r"[^a-z0-9]", "", domain)
+    if len(domain) < 3 or len(domain) > 30:
+        domain = re.sub(r"[^a-z0-9]", "", words[0])
+    if len(domain) < 3:
+        return None
+    return domain  # ex: "ecora", "grandcrees", "missionhill"
 
 
 async def _scrape_emails_from_site(domain_base: str) -> List[str]:
