@@ -2,7 +2,8 @@ name: Détection Réponses Entreprises (SMS)
 
 on:
   schedule:
-    - cron: '*/30 * * * *'   # toutes les 30 minutes, 24h/24
+    - cron: '*/30 * * * *'   # toutes les 30 minutes : emails non lus
+    - cron: '0 6 * * *'      # tous les matins à 6h UTC : rattrapage 30 jours
   workflow_dispatch:
     inputs:
       check_all:
@@ -30,7 +31,7 @@ jobs:
       - name: Installer les dependances
         run: pip install -r requirements-ci.txt
 
-      - name: Verifier les reponses et envoyer SMS si besoin
+      - name: Verifier les reponses et envoyer SMS si besoin (emails non lus)
         env:
           SMTP_HOST: smtp.gmail.com
           SMTP_PORT: "587"
@@ -42,8 +43,8 @@ jobs:
           LOG_LEVEL: INFO
         run: python main.py --check-replies
 
-      - name: Rattrapage - verifier emails lus des 30 derniers jours (si demande)
-        if: ${{ github.event.inputs.check_all == 'true' }}
+      - name: Rattrapage quotidien - verifier tous les emails des 30 derniers jours
+        if: ${{ github.event.schedule == '0 6 * * *' || github.event.inputs.check_all == 'true' }}
         env:
           SMTP_HOST: smtp.gmail.com
           SMTP_PORT: "587"
