@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '*/30 * * * *'   # toutes les 30 minutes, 24h/24
   workflow_dispatch:
+    inputs:
+      check_all:
+        description: 'Verifier aussi les emails deja lus (30 derniers jours)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   check-replies:
@@ -35,3 +41,16 @@ jobs:
           DATABASE_URL: sqlite:///jobs.db
           LOG_LEVEL: INFO
         run: python main.py --check-replies
+
+      - name: Rattrapage - verifier emails lus des 30 derniers jours (si demande)
+        if: ${{ github.event.inputs.check_all == 'true' }}
+        env:
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: "587"
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          NOTIFICATION_EMAIL: ${{ secrets.SMTP_USER }}
+          SMS_EMAIL: ${{ secrets.SMS_EMAIL }}
+          DATABASE_URL: sqlite:///jobs.db
+          LOG_LEVEL: INFO
+        run: python check_replies_now.py

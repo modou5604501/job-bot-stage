@@ -24,8 +24,8 @@ IGNORED_DOMAINS = [
 IGNORED_KEYWORDS_SENDER = [
     "noreply", "no-reply", "donotreply", "do-not-reply",
     "newsletter", "notification", "bounce", "daemon",
-    "info@", "contact@", "support@", "hello@",
     "association", "asbl", "ong",
+    # NB: info@ et contact@ sont intentionnellement gardes : beaucoup de RH ecrivent depuis ces adresses
 ]
 
 # Le sujet DOIT contenir au moins un de ces mots pour etre une vraie reponse
@@ -37,14 +37,23 @@ REQUIRED_SUBJECT_KEYWORDS = [
     "suite a votre", "following your", "en reponse",
     "we reviewed", "nous avons examine", "retenu",
     "selected", "shortlisted", "interesse",
+    # Reponses courantes et generiques
+    "merci pour votre", "thank you for your",
+    "nous avons bien recu", "we have received",
+    "re:", "fwd:", "suite:", "regarding your",
+    "votre dossier", "your application", "your profile",
+    "opportunite", "opportunity", "recrutement", "recruitment",
+    "profil retenu", "not retained", "pas retenu",
 ]
 
-# Mots dans le corps qui renforcent la detection
+# Mots dans le corps qui renforcent la detection (1 seul suffit — ou aucun si expediteur connu)
 BODY_CONFIRM_KEYWORDS = [
     "geomatique", "geomatics", "gis", "sig", "cartographie",
     "environnement", "stage", "intern", "candidature",
     "cv", "resume", "profil", "entretien", "interview",
     "modou", "mbaye", "khabane",
+    "candidat", "candidate", "votre demande", "your request",
+    "poste", "position", "emploi", "job",
 ]
 
 
@@ -54,10 +63,10 @@ class InboxMonitor:
         self.imap_host = "imap.gmail.com"
         self.db = db  # JobDatabase — pour croiser avec les candidatures envoyees
 
-    def check_for_replies(self) -> List[Dict]:
+    def check_for_replies(self, check_all: bool = False) -> List[Dict]:
         """
         Verifie la boite Gmail pour les vraies reponses d'entreprises.
-        Criteres stricts : domaine inconnu + sujet avec mots-cles job.
+        check_all=True : cherche aussi dans les emails deja lus (30 derniers jours).
         """
         replies = []
         try:
@@ -65,12 +74,19 @@ class InboxMonitor:
             mail.login(self.settings.smtp_user, self.settings.smtp_password)
             mail.select("inbox")
 
-            status, messages = mail.search(None, "UNSEEN")
+            if check_all:
+                # Cherche dans tous les emails recus depuis 30 jours
+                from datetime import date, timedelta
+                since_date = (date.today() - timedelta(days=30)).strftime("%d-%b-%Y")
+                status, messages = mail.search(None, f'SINCE {since_date}')
+            else:
+                status, messages = mail.search(None, "UNSEEN")
+
             if status != "OK":
                 return replies
 
             email_ids = messages[0].split()
-            logger.info(f"Emails non lus : {len(email_ids)}")
+            logger.info(f"Emails a analyser : {len(email_ids)} ({'tous 30j' if check_all else 'non lus'})")
 
             # Charger les entreprises a qui on a postule pour croisement prioritaire
             applied_companies = []
@@ -162,7 +178,7 @@ class InboxMonitor:
             if domain in sender:
                 return False
 
-        # 2. Rejeter les expediteurs automatiques
+        # 2. Rejeter les expediteurs automatiques (no-reply, daemon, etc.)
         for kw in IGNORED_KEYWORDS_SENDER:
             if kw in sender:
                 return False
@@ -173,8 +189,13 @@ class InboxMonitor:
             return False
 
         # 4. Le corps doit contenir au moins 1 mot de confirmation
+        #    OU le sujet est deja tres specifique (contient "candidature" / "entretien" / "interview")
         body_ok = any(kw in body for kw in BODY_CONFIRM_KEYWORDS)
-        if not body_ok:
+        strong_subject = any(kw in subject for kw in [
+            "candidature", "entretien", "interview", "stage", "intern",
+            "retenu", "selected", "shortlisted", "invitation", "convocation",
+        ])
+        if not body_ok and not strong_subject:
             return False
 
         return True
