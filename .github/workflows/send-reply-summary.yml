@@ -1,0 +1,35 @@
+name: Envoyer résumé réponses entreprises
+
+on:
+  workflow_dispatch:
+
+jobs:
+  send-summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Installer les dependances
+        run: pip install -r requirements-ci.txt
+
+      - name: Envoyer email complet des reponses entreprises (30 jours)
+        env:
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: "587"
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          NOTIFICATION_EMAIL: ${{ secrets.SMTP_USER }}
+          SMS_EMAIL: 8199198401@txt.bell.ca
+          DATABASE_URL: sqlite:///jobs.db
+          LOG_LEVEL: INFO
+        run: python send_reply_summary.py
